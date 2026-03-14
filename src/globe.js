@@ -4,11 +4,10 @@ import * as THREE from 'three'
 export function createGlobe(radius) {
   const group = new THREE.Group()
 
-  // --- Globe sphere (textured surface with bump, ocean, night lights, clouds) ---
+  // --- Globe sphere (textured surface with bump, ocean, night lights) ---
   const textureLoader = new THREE.TextureLoader()
   const albedoTex = textureLoader.load('/textures/Albedo.jpeg')
   const bumpTex = textureLoader.load('/textures/Bump.jpeg')
-  const cloudsTex = textureLoader.load('/textures/Clouds.png')
   const oceanTex = textureLoader.load('/textures/Ocean_Mask.png')
   const nightTex = textureLoader.load('/textures/night_lights_modified.png')
 
@@ -21,13 +20,11 @@ export function createGlobe(radius) {
       uColor: { value: new THREE.Color(0x1a0a30) },
       uAlbedo: { value: albedoTex },
       uBump: { value: bumpTex },
-      uClouds: { value: cloudsTex },
       uOcean: { value: oceanTex },
       uNightLights: { value: nightTex },
       uTextureStrength: { value: 1.0 },
       uBumpStrength: { value: 0.03 },
-      uCloudStrength: { value: 0.3 },
-      uNightStrength: { value: 0.5 },
+      uNightStrength: { value: 0.15 },
       uOceanStrength: { value: 0.3 },
       uSunDir: { value: new THREE.Vector3(1.0, 0.5, 0.8).normalize() },
       uTerminatorSharpness: { value: 8.0 },
@@ -50,12 +47,10 @@ export function createGlobe(radius) {
       uniform vec3 uColor;
       uniform sampler2D uAlbedo;
       uniform sampler2D uBump;
-      uniform sampler2D uClouds;
       uniform sampler2D uOcean;
       uniform sampler2D uNightLights;
       uniform float uTextureStrength;
       uniform float uBumpStrength;
-      uniform float uCloudStrength;
       uniform float uNightStrength;
       uniform float uOceanStrength;
       uniform vec3 uSunDir;
@@ -110,13 +105,9 @@ export function createGlobe(radius) {
         // Night lights
         vec3 nightLights = texture2D(uNightLights, vUv).rgb * uNightStrength * nightMask;
 
-        // Clouds
-        float clouds = texture2D(uClouds, vUv).r;
-        vec3 cloudColor = vec3(clouds) * uCloudStrength * dayLight;
-
         // Compose
         vec3 baseColor = uColor * mix(0.3, 1.0, dot(viewDir, N));
-        vec3 dayColor = albedo * dayLight + oceanSpec + cloudColor;
+        vec3 dayColor = albedo * dayLight + oceanSpec;
         vec3 nightColor = albedo * ambient * 0.3 + nightLights;
         vec3 texColor = mix(dayColor, nightColor, nightMask);
 

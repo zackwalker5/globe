@@ -277,7 +277,7 @@ export function createEruptions(trafficPoints, globeRadius) {
     uniforms: {
       uTime: { value: 0 },
       uScale: { value: 0.31 },
-      uPointScale: { value: 0.03 },
+      uPointScale: { value: 0.01 },
       uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
       uColor1: { value: new THREE.Color(0xf1666e) }, // hot core (red/magenta)
       uColor2: { value: new THREE.Color(0xf7a43e) }, // mid (yellow/orange)

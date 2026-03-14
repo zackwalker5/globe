@@ -8,26 +8,153 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
     canvas { display: block; }
-    #overlay {
+    #legend {
       position: fixed;
-      bottom: 32px;
-      left: 32px;
+      bottom: 28px;
+      left: 28px;
       z-index: 10;
       pointer-events: none;
-    }
-    #overlay h1 {
       font-family: 'Courier New', monospace;
-      font-size: 12px;
-      font-weight: 400;
-      letter-spacing: 4px;
+      background: rgba(5, 0, 16, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      padding: 14px 16px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    #legend .legend-title {
+      font-size: 9px;
+      letter-spacing: 3px;
       text-transform: uppercase;
-      color: rgba(255, 255, 255, 0.2);
+      color: rgba(255, 255, 255, 0.25);
+      margin-bottom: 10px;
+    }
+    #legend .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    #legend .legend-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    #legend .legend-swatch.triangle {
+      border-radius: 0;
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-bottom: 10px solid #ff6b35;
+    }
+    #legend .legend-swatch.line {
+      border-radius: 0;
+      width: 14px;
+      height: 2px;
+    }
+    #legend .legend-swatch.ring {
+      background: transparent;
+      border: 1.5px solid;
+    }
+    #legend .legend-label {
+      font-size: 10px;
+      letter-spacing: 1px;
+      color: rgba(255, 255, 255, 0.35);
+    }
+    #legend .legend-separator {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.08);
+      margin: 8px 0;
+    }
+    #data-info {
+      position: fixed;
+      top: 24px;
+      left: 24px;
+      z-index: 10;
+      pointer-events: none;
+      font-family: 'Courier New', monospace;
+      color: rgba(255, 255, 255, 0.6);
+    }
+    #data-info .source {
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.5);
+      margin-bottom: 6px;
+    }
+    #data-info .count {
+      font-size: 20px;
+      font-weight: 300;
+      letter-spacing: 1px;
+      color: rgba(255, 255, 255, 0.7);
+      margin-bottom: 4px;
+    }
+    #data-info .timestamp {
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: rgba(255, 255, 255, 0.3);
     }
   </style>
 </head>
 <body>
-  <div id="overlay">
-    <h1>Internet Pulse</h1>
+  <div id="data-info">
+    <div class="source" id="info-source">Internet Traffic</div>
+    <div class="count" id="info-count">20 points</div>
+    <div class="timestamp" id="info-timestamp"></div>
+  </div>
+  <div id="legend">
+    <div class="legend-title">NASA EONET Natural Events</div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background: #f1666e; box-shadow: 0 0 4px #f1666e;"></div>
+      <span class="legend-label">Volcanoes / Severe Storms</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background: #f7a43e; box-shadow: 0 0 4px #f7a43e;"></div>
+      <span class="legend-label">Wildfires</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background: #61c16b; box-shadow: 0 0 4px #61c16b;"></div>
+      <span class="legend-label">Floods / Landslides</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background: #4697f7; box-shadow: 0 0 4px #4697f7;"></div>
+      <span class="legend-label">Snow / Ice / Drought</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background: #ff96dc; box-shadow: 0 0 6px #ff96dc;"></div>
+      <span class="legend-label">Event Hotspot</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch ring" style="border-color: #9b84f7;"></div>
+      <span class="legend-label">Event Pulse</span>
+    </div>
+    <div class="legend-separator"></div>
+    <div class="legend-title" style="margin-top: 2px;">USGS Earthquakes</div>
+    <div class="legend-item">
+      <div class="legend-swatch ring" style="border-color: #ffcc44; border-width: 2px;"></div>
+      <span class="legend-label">Epicenter (M2.5+)</span>
+    </div>
+    <div class="legend-separator"></div>
+    <div class="legend-title" style="margin-top: 2px;">Satellites</div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background: #ffffff; box-shadow: 0 0 4px #ffffff; border-radius: 0; width: 6px; height: 6px;"></div>
+      <span class="legend-label">Starlink Constellation</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch triangle"></div>
+      <span class="legend-label">ISS Live Position</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch line" style="background: #ff6b35; box-shadow: 0 0 4px #ff6b35;"></div>
+      <span class="legend-label">ISS Orbit Trail</span>
+    </div>
+    <div class="legend-separator"></div>
+    <div class="legend-item">
+      <div class="legend-swatch ring" style="border-color: #00ccff;"></div>
+      <span class="legend-label">Your Location</span>
+    </div>
   </div>
   <script type="module" src="/src/main.js"></script>
 </body>
