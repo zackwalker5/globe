@@ -19,6 +19,7 @@ import { createQuakeLayer } from './quakevis.js'
 import { fetchStarlinkPositions, updatePositions, createSatelliteCloud } from './satellites.js'
 
 // --- Setup ---
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768
 const GLOBE_RADIUS = 3
 
 const scene = new THREE.Scene()
@@ -26,28 +27,31 @@ const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerH
 camera.position.set(0, 2, 9)
 
 const renderer = new THREE.WebGLRenderer({
-  antialias: true,
+  antialias: !isMobile,
   alpha: false,
   powerPreference: 'high-performance',
 })
 renderer.setSize(window.innerWidth, window.innerHeight)
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2))
 renderer.setClearColor(0x050010)
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.toneMappingExposure = 0.8
 document.body.appendChild(renderer.domElement)
 
-// --- Post-processing (bloom) ---
+// --- Post-processing (bloom — skip on mobile) ---
 const composer = new EffectComposer(renderer)
 composer.addPass(new RenderPass(scene, camera))
 
-const bloomPass = new UnrealBloomPass(
-  new THREE.Vector2(window.innerWidth, window.innerHeight),
-  0.4,   // strength
-  0.3,   // radius
-  0.6    // threshold
-)
-composer.addPass(bloomPass)
+let bloomPass = null
+if (!isMobile) {
+  bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.4,   // strength
+    0.3,   // radius
+    0.6    // threshold
+  )
+  composer.addPass(bloomPass)
+}
 
 // --- Controls ---
 const controls = new OrbitControls(camera, renderer.domElement)
@@ -71,7 +75,7 @@ const nebula = createNebula()
 scene.add(nebula)
 
 // Globe
-const { group: globeGroup, globe, atmosphere, gridSphere } = createGlobe(GLOBE_RADIUS)
+const { group: globeGroup, globe, atmosphere, gridSphere } = createGlobe(GLOBE_RADIUS, { segments: isMobile ? 64 : 128 })
 atmosphere.scale.setScalar(0.88)
 scene.add(globeGroup)
 
@@ -150,7 +154,7 @@ let satSatrecs = []
 const SAT_UPDATE_INTERVAL = 10000 // update orbital positions every 10s
 let lastSatUpdate = 0
 
-fetchStarlinkPositions().then(({ satrecs, positions }) => {
+fetchStarlinkPositions(isMobile ? 500 : Infinity).then(({ satrecs, positions }) => {
   if (positions.length === 0) return
   satSatrecs = satrecs
   satCloud = createSatelliteCloud(GLOBE_RADIUS, positions)
@@ -246,13 +250,14 @@ if (navigator.geolocation) {
 }
 
 // ISS tracker
-const iss = createISS(GLOBE_RADIUS)
+const iss = createISS(GLOBE_RADIUS, isMobile ? { trailLength: 100, backfillMinutes: 10 } : {})
 globeGroup.add(iss.group)
 timedMaterials.push(iss.markerMaterial)
 iss.startPolling()
 
 // --- Dev Controls (lil-gui) ---
 const gui = new GUI({ title: 'Dev Controls', width: 320 })
+if (isMobile) gui.close()
 
 // Helper to bind a color uniform to gui
 function guiColor(folder, mat, uniformName, label) {
@@ -263,11 +268,14 @@ function guiColor(folder, mat, uniformName, label) {
 }
 
 // -- Bloom --
-const bloomFolder = gui.addFolder('Bloom')
-bloomFolder.add(bloomPass, 'strength', 0, 5, 0.01).name('Strength')
-bloomFolder.add(bloomPass, 'radius', 0, 2, 0.01).name('Radius')
-bloomFolder.add(bloomPass, 'threshold', 0, 1, 0.01).name('Threshold')
-bloomFolder.add(renderer, 'toneMappingExposure', 0.1, 5, 0.05).name('Exposure')
+let bloomFolder = null
+if (bloomPass) {
+  bloomFolder = gui.addFolder('Bloom')
+  bloomFolder.add(bloomPass, 'strength', 0, 5, 0.01).name('Strength')
+  bloomFolder.add(bloomPass, 'radius', 0, 2, 0.01).name('Radius')
+  bloomFolder.add(bloomPass, 'threshold', 0, 1, 0.01).name('Threshold')
+  bloomFolder.add(renderer, 'toneMappingExposure', 0.1, 5, 0.05).name('Exposure')
+}
 
 // -- Globe Surface --
 const globeFolder = gui.addFolder('Globe')
@@ -608,7 +616,7 @@ fetchEONETEvents().then((events) => {
 })
 
 // -- Close folders by default to keep it tidy --
-bloomFolder.close()
+if (bloomFolder) bloomFolder.close()
 globeFolder.close()
 gridFolder.close()
 atmosFolder.close()

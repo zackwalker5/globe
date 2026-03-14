@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 
 // Globe with lat/lon grid as separate sphere + fresnel atmosphere
-export function createGlobe(radius) {
+export function createGlobe(radius, { segments = 128 } = {}) {
   const group = new THREE.Group()
 
   // --- Globe sphere (textured surface with bump, ocean, night lights) ---
@@ -14,7 +14,7 @@ export function createGlobe(radius) {
   albedoTex.colorSpace = THREE.SRGBColorSpace
   nightTex.colorSpace = THREE.SRGBColorSpace
 
-  const globeGeo = new THREE.SphereGeometry(radius, 128, 64)
+  const globeGeo = new THREE.SphereGeometry(radius, segments, segments / 2)
   const globeMat = new THREE.ShaderMaterial({
     uniforms: {
       uColor: { value: new THREE.Color(0x1a0a30) },
@@ -127,7 +127,7 @@ export function createGlobe(radius) {
   group.add(globe)
 
   // --- Grid sphere (separate, can be toggled + elevated) ---
-  const gridGeo = new THREE.SphereGeometry(radius, 128, 64)
+  const gridGeo = new THREE.SphereGeometry(radius, segments, segments / 2)
   const gridMat = new THREE.ShaderMaterial({
     uniforms: {
       uGridColor: { value: new THREE.Color(0x6149f7) },

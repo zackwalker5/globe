@@ -113,7 +113,7 @@ function eciToGeodetic(positionEci, date) {
   }
 }
 
-export async function fetchStarlinkPositions() {
+export async function fetchStarlinkPositions(maxCount = Infinity) {
   console.log('Fetching Starlink orbital elements...')
 
   try {
@@ -129,6 +129,7 @@ export async function fetchStarlinkPositions() {
     const positions = []
 
     for (const gp of gpData) {
+      if (satrecs.length >= maxCount) break
       try {
         const satrec = gpToSatrec(gp)
         const posEci = propagate(satrec, now)

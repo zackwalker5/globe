@@ -3,19 +3,21 @@ import { latLonToVec3 } from './data.js'
 
 const ISS_API = 'https://api.wheretheiss.at/v1/satellites/25544'
 const ISS_POSITIONS_API = 'https://api.wheretheiss.at/v1/satellites/25544/positions'
-const TRAIL_LENGTH = 500
+const TRAIL = 500
 const POLL_INTERVAL = 5000 // 5 seconds
 const BACKFILL_MINUTES = 45
 const BACKFILL_STEP = 10 // seconds between backfill samples
 
-export function createISS(globeRadius) {
+export function createISS(globeRadius, { trailLength = 500, backfillMinutes = 45 } = {}) {
   const group = new THREE.Group()
+  const TRAIL = trailLength
+  const BACKFILL = backfillMinutes
 
   // --- Orbit trail (fading line behind ISS) ---
-  const trailPositions = new Float32Array(TRAIL_LENGTH * 3)
-  const trailAlphas = new Float32Array(TRAIL_LENGTH)
+  const trailPositions = new Float32Array(TRAIL * 3)
+  const trailAlphas = new Float32Array(TRAIL)
 
-  for (let i = 0; i < TRAIL_LENGTH; i++) {
+  for (let i = 0; i < TRAIL; i++) {
     trailAlphas[i] = i // store index; shader normalizes by active count
   }
 
@@ -153,7 +155,7 @@ export function createISS(globeRadius) {
 
     // Shift trail: move all positions one slot back
     const tPos = trail.geometry.attributes.position.array
-    for (let i = TRAIL_LENGTH - 1; i > 0; i--) {
+    for (let i = TRAIL - 1; i > 0; i--) {
       tPos[i * 3] = tPos[(i - 1) * 3]
       tPos[i * 3 + 1] = tPos[(i - 1) * 3 + 1]
       tPos[i * 3 + 2] = tPos[(i - 1) * 3 + 2]
@@ -165,8 +167,8 @@ export function createISS(globeRadius) {
 
     if (!trailFilled) {
       trailIndex++
-      if (trailIndex >= TRAIL_LENGTH) trailFilled = true
-      const count = Math.min(trailIndex, TRAIL_LENGTH)
+      if (trailIndex >= TRAIL) trailFilled = true
+      const count = Math.min(trailIndex, TRAIL)
       trail.geometry.setDrawRange(0, count)
       trailMat.uniforms.uTrailCount.value = count
     }
@@ -187,7 +189,7 @@ export function createISS(globeRadius) {
   async function backfillTrail() {
     try {
       const now = Math.floor(Date.now() / 1000)
-      const totalSamples = Math.floor((BACKFILL_MINUTES * 60) / BACKFILL_STEP)
+      const totalSamples = Math.floor((BACKFILL * 60) / BACKFILL_STEP)
       // API limits ~10 timestamps per request, so batch them
       const batchSize = 10
       const allPositions = []
@@ -195,7 +197,7 @@ export function createISS(globeRadius) {
       for (let i = 0; i < totalSamples; i += batchSize) {
         const timestamps = []
         for (let j = 0; j < batchSize && (i + j) < totalSamples; j++) {
-          // oldest first: start from BACKFILL_MINUTES ago, step forward
+          // oldest first: start from BACKFILL minutes ago, step forward
           const secsAgo = (totalSamples - (i + j)) * BACKFILL_STEP
           timestamps.push(now - secsAgo)
         }
@@ -207,7 +209,7 @@ export function createISS(globeRadius) {
 
       // Fill trail from oldest to newest (no marker update, just trail)
       const tPos = trail.geometry.attributes.position.array
-      const count = Math.min(allPositions.length, TRAIL_LENGTH)
+      const count = Math.min(allPositions.length, TRAIL)
       // Place oldest at the end of the trail, newest at the front
       for (let i = 0; i < count; i++) {
         const d = allPositions[allPositions.length - 1 - i]
@@ -218,7 +220,7 @@ export function createISS(globeRadius) {
       }
       trail.geometry.attributes.position.needsUpdate = true
       trailIndex = count
-      trailFilled = count >= TRAIL_LENGTH
+      trailFilled = count >= TRAIL
       trail.geometry.setDrawRange(0, count)
       trailMat.uniforms.uTrailCount.value = count
 
