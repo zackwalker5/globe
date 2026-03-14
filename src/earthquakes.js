@@ -1,10 +1,17 @@
-const USGS_FEED = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson'
+const USGS_BASE = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_'
 
-export async function fetchEarthquakes() {
-  console.log('Fetching USGS earthquake data...')
+export const QUAKE_RANGES = {
+  'Past Hour': 'hour',
+  'Past 24 Hours': 'day',
+  'Past 7 Days': 'week',
+  'Past 30 Days': 'month',
+}
+
+export async function fetchEarthquakes(range = 'week') {
+  console.log(`Fetching USGS earthquake data (${range})...`)
 
   try {
-    const res = await fetch(USGS_FEED)
+    const res = await fetch(`${USGS_BASE}${range}.geojson`)
     if (!res.ok) {
       console.warn(`USGS API ${res.status}`)
       return []
@@ -39,7 +46,7 @@ export async function fetchEarthquakes() {
       })
     }
 
-    console.log(`Found ${events.length} earthquakes (M2.5+ last 7 days)`)
+    console.log(`Found ${events.length} earthquakes (M2.5+ ${range})`)
     return events
   } catch (e) {
     console.warn('USGS fetch error:', e)

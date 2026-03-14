@@ -14,7 +14,7 @@ import { fetchStormData, getFallbackStorms } from './weather.js'
 import { fetchEONETEvents } from './eonet.js'
 import { createUserMarker } from './userlocation.js'
 import { createISS } from './iss.js'
-import { fetchEarthquakes } from './earthquakes.js'
+import { fetchEarthquakes, QUAKE_RANGES } from './earthquakes.js'
 import { createQuakeLayer } from './quakevis.js'
 import { fetchStarlinkPositions, updatePositions, createSatelliteCloud } from './satellites.js'
 
@@ -379,7 +379,13 @@ const quakeState = {
   speed: 0.5,
   opacity: 0.5,
   visible: true,
+  range: 'Past 7 Days',
 }
+quakeFolder.add(quakeState, 'range', Object.keys(QUAKE_RANGES)).name('Time Range').onChange(async (v) => {
+  sourceCache.earthquakes = await fetchEarthquakes(QUAKE_RANGES[v])
+  rebuildQuakeLayer()
+  mergeAndApply()
+})
 quakeFolder.addColor(quakeState, 'color').name('Color').onChange((v) => { if (quakeLayer) quakeLayer.material.uniforms.uColor.value.set(v) })
 quakeFolder.add(quakeState, 'maxRadius', 0.05, 0.5, 0.01).name('Ring Size').onChange((v) => { if (quakeLayer) quakeLayer.material.uniforms.uMaxRadius.value = v })
 quakeFolder.add(quakeState, 'speed', 0.1, 3.0, 0.1).name('Pulse Speed').onChange((v) => { if (quakeLayer) quakeLayer.material.uniforms.uSpeed.value = v })
