@@ -1,97 +1,92 @@
 import * as THREE from 'three'
 import { latLonToVec3 } from './data.js'
 
-// Everything in a single Points draw call — concentric rings rendered in fragment shader
+const RINGS_PER_QUAKE = 2
+const RING_SEGMENTS = 48
+
+// Earthquake markers — expanding concentric ring loops like the user location marker
 export function createQuakeLayer(quakePoints, globeRadius) {
   const count = quakePoints.length
-  const positions = new Float32Array(count * 3)
-  const intensities = new Float32Array(count)
-  const phases = new Float32Array(count)
-
-  for (let i = 0; i < count; i++) {
-    const pt = quakePoints[i]
-    const pos = latLonToVec3(pt.lat, pt.lon, globeRadius * 1.004)
-    positions[i * 3] = pos.x
-    positions[i * 3 + 1] = pos.y
-    positions[i * 3 + 2] = pos.z
-    intensities[i] = pt.intensity
-    phases[i] = Math.random() * 6.28 // offset so they don't all pulse in sync
-  }
-
-  const geo = new THREE.BufferGeometry()
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-  geo.setAttribute('aIntensity', new THREE.BufferAttribute(intensities, 1))
-  geo.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1))
+  const group = new THREE.Group()
 
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
-      uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
       uColor: { value: new THREE.Color(0xffcc44) },
-      uSize: { value: 1.0 },
-      uOpacity: { value: 0.5 },
+      uMaxRadius: { value: 0.15 },
       uSpeed: { value: 0.5 },
+      uOpacity: { value: 0.5 },
     },
     vertexShader: /* glsl */ `
-      uniform float uTime;
-      uniform float uPixelRatio;
-      uniform float uSize;
-
-      attribute float aIntensity;
       attribute float aPhase;
+      attribute float aIntensity;
 
+      uniform float uTime;
+      uniform float uMaxRadius;
+      uniform float uSpeed;
+
+      varying float vAlpha;
       varying float vIntensity;
-      varying float vPhase;
 
       void main() {
+        float cycle = uTime * uSpeed + aPhase;
+        float progress = fract(cycle / ${RINGS_PER_QUAKE.toFixed(1)});
+
+        float radius = progress * uMaxRadius * (0.5 + aIntensity * 0.5);
+        vec3 pos = position * radius;
+
+        vAlpha = 1.0 - smoothstep(0.2, 1.0, progress);
         vIntensity = aIntensity;
-        vPhase = aPhase;
 
-        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-        gl_Position = projectionMatrix * mvPos;
-
-        // Size scales with intensity
-        float baseSize = 2.0 + aIntensity * 6.0;
-        gl_PointSize = baseSize * uSize * uPixelRatio * (200.0 / -mvPos.z);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
       }
     `,
     fragmentShader: /* glsl */ `
       uniform vec3 uColor;
-      uniform float uTime;
       uniform float uOpacity;
-      uniform float uSpeed;
-
+      varying float vAlpha;
       varying float vIntensity;
-      varying float vPhase;
 
       void main() {
-        float d = length(gl_PointCoord - 0.5) * 2.0; // 0 at center, 1 at edge
-        if (d > 1.0) discard;
-
-        float t = fract(uTime * uSpeed * 0.15 + vPhase);
-
-        // Center dot with slow breathe
-        float breathe = 0.7 + sin(uTime * uSpeed * 0.5 + vPhase) * 0.3;
-        float dot = smoothstep(0.2, 0.0, d) * breathe;
-
-        // 2 concentric expanding rings — wider bands, fade as they expand
-        float ring1t = fract(t);
-        float ring1 = smoothstep(0.06, 0.0, abs(d - ring1t)) * (1.0 - ring1t * ring1t);
-
-        float ring2t = fract(t + 0.5);
-        float ring2 = smoothstep(0.06, 0.0, abs(d - ring2t)) * (1.0 - ring2t * ring2t);
-
-        float alpha = (dot + ring1 + ring2) * vIntensity * uOpacity;
-        if (alpha < 0.001) discard;
-
-        gl_FragColor = vec4(uColor, alpha);
+        gl_FragColor = vec4(uColor, vAlpha * uOpacity * vIntensity);
       }
     `,
     transparent: true,
     depthWrite: false,
     blending: THREE.NormalBlending,
+    side: THREE.DoubleSide,
   })
 
-  const points = new THREE.Points(geo, mat)
-  return { group: points, material: mat }
+  for (let i = 0; i < count; i++) {
+    const pt = quakePoints[i]
+    const pos = latLonToVec3(pt.lat, pt.lon, globeRadius * 1.004)
+    const normal = new THREE.Vector3(pos.x, pos.y, pos.z).normalize()
+
+    for (let r = 0; r < RINGS_PER_QUAKE; r++) {
+      const positions = new Float32Array(RING_SEGMENTS * 3)
+      const phases = new Float32Array(RING_SEGMENTS)
+      const intensities = new Float32Array(RING_SEGMENTS)
+
+      for (let s = 0; s < RING_SEGMENTS; s++) {
+        const angle = (s / RING_SEGMENTS) * Math.PI * 2
+        positions[s * 3] = Math.cos(angle)
+        positions[s * 3 + 1] = Math.sin(angle)
+        positions[s * 3 + 2] = 0
+        phases[s] = r + i * 0.7 // offset per quake so they don't sync
+        intensities[s] = pt.intensity
+      }
+
+      const geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+      geo.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1))
+      geo.setAttribute('aIntensity', new THREE.BufferAttribute(intensities, 1))
+
+      const ring = new THREE.LineLoop(geo, mat)
+      ring.position.set(pos.x, pos.y, pos.z)
+      ring.lookAt(pos.x + normal.x, pos.y + normal.y, pos.z + normal.z)
+      group.add(ring)
+    }
+  }
+
+  return { group, material: mat }
 }

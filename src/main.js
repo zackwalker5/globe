@@ -210,6 +210,8 @@ function setEmitterData(points) {
   timedMaterials.length = 0
   timedMaterials.push(starfield.material, eruptions.material, hotspots.material, pulseRings.material, userMarker.material)
   if (satCloud) timedMaterials.push(satCloud.material)
+  if (quakeLayer) timedMaterials.push(quakeLayer.material)
+  timedMaterials.push(iss.markerMaterial)
   nebulaMaterials.forEach((m) => timedMaterials.push(m))
 }
 
@@ -373,13 +375,13 @@ ringsFolder.add(ringsState, 'visible').name('Visible').onChange((v) => pulseRing
 const quakeFolder = gui.addFolder('Earthquakes')
 const quakeState = {
   color: '#ffcc44',
-  size: 1.0,
+  maxRadius: 0.15,
   speed: 0.5,
   opacity: 0.5,
   visible: true,
 }
 quakeFolder.addColor(quakeState, 'color').name('Color').onChange((v) => { if (quakeLayer) quakeLayer.material.uniforms.uColor.value.set(v) })
-quakeFolder.add(quakeState, 'size', 0.2, 5.0, 0.1).name('Size').onChange((v) => { if (quakeLayer) quakeLayer.material.uniforms.uSize.value = v })
+quakeFolder.add(quakeState, 'maxRadius', 0.05, 0.5, 0.01).name('Ring Size').onChange((v) => { if (quakeLayer) quakeLayer.material.uniforms.uMaxRadius.value = v })
 quakeFolder.add(quakeState, 'speed', 0.1, 3.0, 0.1).name('Pulse Speed').onChange((v) => { if (quakeLayer) quakeLayer.material.uniforms.uSpeed.value = v })
 quakeFolder.add(quakeState, 'opacity', 0, 1, 0.01).name('Opacity').onChange((v) => { if (quakeLayer) quakeLayer.material.uniforms.uOpacity.value = v })
 quakeFolder.add(quakeState, 'visible').name('Visible').onChange((v) => { if (quakeLayer) quakeLayer.group.visible = v })
@@ -528,7 +530,9 @@ let quakeLayer = null
 function rebuildQuakeLayer() {
   // Remove old layer
   if (quakeLayer) {
-    quakeLayer.group.geometry.dispose()
+    quakeLayer.group.traverse((child) => {
+      if (child.geometry) child.geometry.dispose()
+    })
     quakeLayer.material.dispose()
     globeGroup.remove(quakeLayer.group)
     const idx = timedMaterials.indexOf(quakeLayer.material)
@@ -543,7 +547,7 @@ function rebuildQuakeLayer() {
 
     // Apply quake state from dev controls
     quakeLayer.material.uniforms.uColor.value.set(quakeState.color)
-    quakeLayer.material.uniforms.uSize.value = quakeState.size
+    quakeLayer.material.uniforms.uMaxRadius.value = quakeState.maxRadius
     quakeLayer.material.uniforms.uSpeed.value = quakeState.speed
     quakeLayer.material.uniforms.uOpacity.value = quakeState.opacity
     quakeLayer.group.visible = quakeState.visible
