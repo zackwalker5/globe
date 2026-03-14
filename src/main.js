@@ -374,7 +374,7 @@ const quakeFolder = gui.addFolder('Earthquakes')
 const quakeState = {
   color: '#ffcc44',
   size: 1.0,
-  speed: 1.0,
+  speed: 0.5,
   opacity: 0.5,
   visible: true,
 }

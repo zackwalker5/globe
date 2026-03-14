@@ -30,7 +30,7 @@ export function createQuakeLayer(quakePoints, globeRadius) {
       uColor: { value: new THREE.Color(0xffcc44) },
       uSize: { value: 1.0 },
       uOpacity: { value: 0.5 },
-      uSpeed: { value: 1.0 },
+      uSpeed: { value: 0.5 },
     },
     vertexShader: /* glsl */ `
       uniform float uTime;
@@ -68,17 +68,18 @@ export function createQuakeLayer(quakePoints, globeRadius) {
         float d = length(gl_PointCoord - 0.5) * 2.0; // 0 at center, 1 at edge
         if (d > 1.0) discard;
 
-        float t = fract(uTime * uSpeed * 0.3 + vPhase);
+        float t = fract(uTime * uSpeed * 0.15 + vPhase);
 
-        // Center dot
-        float dot = smoothstep(0.15, 0.0, d) * 0.8;
+        // Center dot with slow breathe
+        float breathe = 0.7 + sin(uTime * uSpeed * 0.5 + vPhase) * 0.3;
+        float dot = smoothstep(0.2, 0.0, d) * breathe;
 
-        // 2 concentric expanding rings rendered as thin bands
+        // 2 concentric expanding rings — wider bands, fade as they expand
         float ring1t = fract(t);
-        float ring1 = smoothstep(0.03, 0.0, abs(d - ring1t)) * (1.0 - ring1t);
+        float ring1 = smoothstep(0.06, 0.0, abs(d - ring1t)) * (1.0 - ring1t * ring1t);
 
         float ring2t = fract(t + 0.5);
-        float ring2 = smoothstep(0.03, 0.0, abs(d - ring2t)) * (1.0 - ring2t);
+        float ring2 = smoothstep(0.06, 0.0, abs(d - ring2t)) * (1.0 - ring2t * ring2t);
 
         float alpha = (dot + ring1 + ring2) * vIntensity * uOpacity;
         if (alpha < 0.001) discard;
