@@ -447,7 +447,7 @@ const sourceCache = {
 // Source toggle state
 const sourceToggles = {
   eonet: true,
-  earthquakes: false,
+  earthquakes: true,
   storms: false,
   traffic: false,
 }
@@ -599,9 +599,15 @@ eonetFolder.close()
 const statusCtrl = dataFolder.add(dataState, 'status').name('Status').disable()
 const countCtrl = dataFolder.add(dataState, 'totalPoints').name('Points').disable()
 
-// Auto-fetch EONET on startup
+// Auto-fetch on startup
 fetchEONETEvents().then((events) => {
   sourceCache.eonet = events
+  mergeAndApply()
+})
+
+fetchEarthquakes().then((quakes) => {
+  sourceCache.earthquakes = quakes
+  rebuildQuakeLayer()
   mergeAndApply()
 })
 
