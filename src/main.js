@@ -331,23 +331,24 @@ starsFolder.close()
 nebulaFolder.close()
 sceneFolder.close()
 
-// --- Sun direction from real time ---
+// --- Sun direction from real time (object space — fixed to texture) ---
 function getSunDirection() {
   const now = new Date()
 
   // Solar hour angle — where the sun is based on UTC time
   const hours = now.getUTCHours() + now.getUTCMinutes() / 60
-  const sunLon = ((12 - hours) / 24) * Math.PI * 2 // noon = 0, wraps around
+  const sunLon = ((12 - hours) / 24) * Math.PI * 2 // noon = 0° lon, wraps around
 
   // Solar declination — latitude of subsolar point based on day of year
   const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000)
   const sunLat = 23.44 * Math.sin(((dayOfYear - 81) / 365) * Math.PI * 2) * (Math.PI / 180)
 
-  // Pure world-space direction (normals already include globe rotation via modelMatrix)
+  // Object-space direction — maps directly to texture geography
+  // Three.js SphereGeometry: Prime Meridian (u=0.5) faces +X
   return new THREE.Vector3(
     Math.cos(sunLat) * Math.cos(sunLon),
     Math.sin(sunLat),
-    Math.cos(sunLat) * Math.sin(sunLon)
+    -Math.cos(sunLat) * Math.sin(sunLon)
   ).normalize()
 }
 
@@ -367,12 +368,8 @@ function animate() {
   // Slow auto-rotation of globe
   globeGroup.rotation.y = elapsed * rotSpeed.value
 
-  // Update sun direction — transform into globe's local space
-  // so it stays fixed relative to the texture regardless of globe spin
-  const sunDir = getSunDirection()
-  const invQuat = new THREE.Quaternion().setFromEuler(globeGroup.rotation).invert()
-  sunDir.applyQuaternion(invQuat)
-  globe.material.uniforms.uSunDir.value.copy(sunDir)
+  // Update sun direction in object space — locked to geography
+  globe.material.uniforms.uSunDir.value.copy(getSunDirection())
 
   controls.update()
   composer.render()

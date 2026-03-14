@@ -34,8 +34,8 @@ export function createGlobe(radius) {
     },
     vertexShader: /* glsl */ `
       varying vec3 vNormal;
-      varying vec3 vWorldPos;
       varying vec3 vObjNormal;
+      varying vec3 vWorldPos;
       varying vec2 vUv;
 
       void main() {
@@ -62,24 +62,23 @@ export function createGlobe(radius) {
       uniform float uTerminatorSharpness;
 
       varying vec3 vNormal;
-      varying vec3 vWorldPos;
       varying vec3 vObjNormal;
+      varying vec3 vWorldPos;
       varying vec2 vUv;
 
       void main() {
-        // Object-space normal for sun lighting (stays fixed relative to texture)
+        // Object-space normal for sun lighting (fixed to texture/geography)
         vec3 objN = normalize(vObjNormal);
         // World-space normal for view-dependent effects (fresnel, specular)
         vec3 N = normalize(vNormal);
 
-        // Bump perturbation
+        // Bump perturbation on object-space normal
         vec2 texelSize = vec2(1.0 / 1920.0);
         float bL = texture2D(uBump, vUv - vec2(texelSize.x, 0.0)).r;
         float bR = texture2D(uBump, vUv + vec2(texelSize.x, 0.0)).r;
         float bD = texture2D(uBump, vUv - vec2(0.0, texelSize.y)).r;
         float bU = texture2D(uBump, vUv + vec2(0.0, texelSize.y)).r;
 
-        // Build tangent frame from object normal for sun lighting
         vec3 up = abs(objN.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
         vec3 T = normalize(cross(up, objN));
         vec3 B = cross(objN, T);
@@ -87,10 +86,10 @@ export function createGlobe(radius) {
 
         vec3 viewDir = normalize(cameraPosition - vWorldPos);
 
-        // Sun direction in object space — matches texture coordinates
+        // Sun direction in object space — locked to geography, no globe rotation involved
         vec3 sunDir = normalize(uSunDir);
 
-        // Lighting with sharp terminator (object space — fixed to texture)
+        // Lighting with sharp terminator
         float NdotL = dot(bumpObjN, sunDir);
         float terminator = clamp(NdotL * uTerminatorSharpness + 0.5, 0.0, 1.0);
         float ambient = 0.08;
@@ -102,10 +101,10 @@ export function createGlobe(radius) {
         // Albedo
         vec3 albedo = texture2D(uAlbedo, vUv).rgb;
 
-        // Ocean specular highlight (use world space for view-dependent)
+        // Ocean specular highlight (view-dependent, use world-space normal)
         float oceanMask = texture2D(uOcean, vUv).r;
-        vec3 halfVec = normalize(viewDir + N);
-        float spec = pow(max(dot(N, halfVec), 0.0), 80.0);
+        vec3 reflDir = reflect(-viewDir, N);
+        float spec = pow(max(dot(reflDir, N), 0.0), 80.0);
         vec3 oceanSpec = vec3(0.4, 0.6, 0.8) * spec * oceanMask * uOceanStrength * (1.0 - nightMask);
 
         // Night lights
@@ -123,7 +122,7 @@ export function createGlobe(radius) {
 
         vec3 color = mix(baseColor, texColor, uTextureStrength);
 
-        // Fresnel edge darkening
+        // Fresnel edge darkening (view-dependent)
         float fresnel = dot(viewDir, N);
         color *= mix(0.4, 1.0, fresnel);
 
