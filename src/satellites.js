@@ -211,7 +211,7 @@ export function createSatelliteCloud(globeRadius, positions) {
       uColor1: { value: new THREE.Color(0xffffff) },
       uColor2: { value: new THREE.Color(0xffffff) },
       uBrightness: { value: 1.0 },
-      uSize: { value: 1.0 },
+      uSize: { value: 0.2 },
     },
     vertexShader: /* glsl */ `
       uniform float uTime;

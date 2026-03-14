@@ -201,10 +201,17 @@ export function createISS(globeRadius, { trailLength = 500, backfillMinutes = 45
           const secsAgo = (totalSamples - (i + j)) * BACKFILL_STEP
           timestamps.push(now - secsAgo)
         }
-        const res = await fetch(`${ISS_POSITIONS_API}?timestamps=${timestamps.join(',')}&units=kilometers`)
-        if (!res.ok) continue
-        const data = await res.json()
-        allPositions.push(...data)
+        try {
+          const res = await fetch(`${ISS_POSITIONS_API}?timestamps=${timestamps.join(',')}&units=kilometers`)
+          if (res.status === 429) { break } // rate limited, stop backfill
+          if (!res.ok) continue
+          const data = await res.json()
+          allPositions.push(...data)
+          // Small delay between batches to avoid rate limiting
+          if (i + batchSize < totalSamples) await new Promise(r => setTimeout(r, 300))
+        } catch {
+          break // network error, stop backfill
+        }
       }
 
       // Fill trail from oldest to newest (no marker update, just trail)
@@ -259,7 +266,7 @@ export function createISS(globeRadius, { trailLength = 500, backfillMinutes = 45
   }
 
   async function startPolling() {
-    await backfillTrail()
+    try { await backfillTrail() } catch (e) { console.warn('ISS backfill failed:', e) }
     fetchPosition()
     polling = setInterval(fetchPosition, POLL_INTERVAL)
   }
