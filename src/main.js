@@ -372,20 +372,16 @@ ringsFolder.add(ringsState, 'visible').name('Visible').onChange((v) => pulseRing
 // -- Earthquakes (dedicated layer, proxy state) --
 const quakeFolder = gui.addFolder('Earthquakes')
 const quakeState = {
-  markerColor: '#ffcc44',
-  markerSize: 1.0,
-  ringColor: '#ffcc44',
-  maxRadius: 0.15,
-  speed: 0.15,
-  ringOpacity: 0.08,
+  color: '#ffcc44',
+  size: 1.0,
+  speed: 1.0,
+  opacity: 0.5,
   visible: true,
 }
-quakeFolder.addColor(quakeState, 'markerColor').name('Marker Color').onChange((v) => { if (quakeLayer) quakeLayer.markerMaterial.uniforms.uColor.value.set(v) })
-quakeFolder.add(quakeState, 'markerSize', 0.2, 5.0, 0.1).name('Marker Size').onChange((v) => { if (quakeLayer) quakeLayer.markerMaterial.uniforms.uSize.value = v })
-quakeFolder.addColor(quakeState, 'ringColor').name('Ring Color').onChange((v) => { if (quakeLayer) quakeLayer.ringMaterial.uniforms.uColor.value.set(v) })
-quakeFolder.add(quakeState, 'maxRadius', 0.05, 1.0, 0.01).name('Ring Radius').onChange((v) => { if (quakeLayer) quakeLayer.ringMaterial.uniforms.uMaxRadius.value = v })
-quakeFolder.add(quakeState, 'speed', 0.05, 1.0, 0.01).name('Ring Speed').onChange((v) => { if (quakeLayer) quakeLayer.ringMaterial.uniforms.uSpeed.value = v })
-quakeFolder.add(quakeState, 'ringOpacity', 0, 0.5, 0.005).name('Ring Opacity').onChange((v) => { if (quakeLayer) quakeLayer.ringMaterial.uniforms.uOpacity.value = v })
+quakeFolder.addColor(quakeState, 'color').name('Color').onChange((v) => { if (quakeLayer) quakeLayer.material.uniforms.uColor.value.set(v) })
+quakeFolder.add(quakeState, 'size', 0.2, 5.0, 0.1).name('Size').onChange((v) => { if (quakeLayer) quakeLayer.material.uniforms.uSize.value = v })
+quakeFolder.add(quakeState, 'speed', 0.1, 3.0, 0.1).name('Pulse Speed').onChange((v) => { if (quakeLayer) quakeLayer.material.uniforms.uSpeed.value = v })
+quakeFolder.add(quakeState, 'opacity', 0, 1, 0.01).name('Opacity').onChange((v) => { if (quakeLayer) quakeLayer.material.uniforms.uOpacity.value = v })
 quakeFolder.add(quakeState, 'visible').name('Visible').onChange((v) => { if (quakeLayer) quakeLayer.group.visible = v })
 
 // -- User Location --
@@ -532,30 +528,24 @@ let quakeLayer = null
 function rebuildQuakeLayer() {
   // Remove old layer
   if (quakeLayer) {
-    quakeLayer.group.traverse((child) => {
-      if (child.geometry) child.geometry.dispose()
-    })
-    quakeLayer.markerMaterial.dispose()
-    quakeLayer.ringMaterial.dispose()
+    quakeLayer.group.geometry.dispose()
+    quakeLayer.material.dispose()
     globeGroup.remove(quakeLayer.group)
-    // Remove old materials from timedMaterials
-    timedMaterials.splice(timedMaterials.indexOf(quakeLayer.markerMaterial), 1)
-    timedMaterials.splice(timedMaterials.indexOf(quakeLayer.ringMaterial), 1)
+    const idx = timedMaterials.indexOf(quakeLayer.material)
+    if (idx !== -1) timedMaterials.splice(idx, 1)
     quakeLayer = null
   }
 
   if (sourceToggles.earthquakes && sourceCache.earthquakes.length > 0) {
     quakeLayer = createQuakeLayer(sourceCache.earthquakes, GLOBE_RADIUS)
     globeGroup.add(quakeLayer.group)
-    timedMaterials.push(quakeLayer.markerMaterial, quakeLayer.ringMaterial)
+    timedMaterials.push(quakeLayer.material)
 
     // Apply quake state from dev controls
-    quakeLayer.markerMaterial.uniforms.uColor.value.set(quakeState.markerColor)
-    quakeLayer.markerMaterial.uniforms.uSize.value = quakeState.markerSize
-    quakeLayer.ringMaterial.uniforms.uColor.value.set(quakeState.ringColor)
-    quakeLayer.ringMaterial.uniforms.uMaxRadius.value = quakeState.maxRadius
-    quakeLayer.ringMaterial.uniforms.uSpeed.value = quakeState.speed
-    quakeLayer.ringMaterial.uniforms.uOpacity.value = quakeState.ringOpacity
+    quakeLayer.material.uniforms.uColor.value.set(quakeState.color)
+    quakeLayer.material.uniforms.uSize.value = quakeState.size
+    quakeLayer.material.uniforms.uSpeed.value = quakeState.speed
+    quakeLayer.material.uniforms.uOpacity.value = quakeState.opacity
     quakeLayer.group.visible = quakeState.visible
   }
 }
