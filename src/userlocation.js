@@ -1,48 +1,56 @@
 import * as THREE from 'three'
 import { latLonToVec3 } from './data.js'
 
-const RINGS = 3
-
 export function createUserMarker(globeRadius) {
   const group = new THREE.Group()
   group.visible = false // hidden until location acquired
 
-  const ringMat = new THREE.ShaderMaterial({
+  // Solid filled circle disc
+  const segments = 48
+  const discGeo = new THREE.CircleGeometry(1, segments)
+
+  const mat = new THREE.ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
       uColor: { value: new THREE.Color(0x00ccff) },
-      uMaxRadius: { value: 0.4 },
-      uSpeed: { value: 0.3 },
-      uOpacity: { value: 0.5 },
+      uRadius: { value: 0.06 },
+      uSpeed: { value: 1.5 },
+      uOpacity: { value: 0.8 },
     },
     vertexShader: /* glsl */ `
-      attribute float aPhase;
-
       uniform float uTime;
-      uniform float uMaxRadius;
+      uniform float uRadius;
       uniform float uSpeed;
 
-      varying float vAlpha;
+      varying vec2 vUv;
 
       void main() {
-        float cycle = uTime * uSpeed + aPhase;
-        float progress = fract(cycle / ${RINGS.toFixed(1)});
-
-        float radius = progress * uMaxRadius;
-        vec3 pos = position * radius;
-
-        vAlpha = 1.0 - smoothstep(0.2, 1.0, progress);
-
+        // Gentle pulse
+        float pulse = 1.0 + sin(uTime * uSpeed) * 0.2;
+        vec3 pos = position * uRadius * pulse;
+        vUv = uv;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
       }
     `,
     fragmentShader: /* glsl */ `
       uniform vec3 uColor;
       uniform float uOpacity;
-      varying float vAlpha;
+      uniform float uTime;
+      uniform float uSpeed;
+
+      varying vec2 vUv;
 
       void main() {
-        gl_FragColor = vec4(uColor, vAlpha * uOpacity);
+        // Distance from center (uvs go 0-1, center is 0.5)
+        float d = length(vUv - 0.5) * 2.0;
+
+        // Soft edge
+        float alpha = smoothstep(1.0, 0.7, d);
+
+        // Pulse brightness
+        float pulse = 0.8 + sin(uTime * uSpeed) * 0.2;
+
+        gl_FragColor = vec4(uColor * pulse, alpha * uOpacity);
       }
     `,
     transparent: true,
@@ -51,41 +59,18 @@ export function createUserMarker(globeRadius) {
     side: THREE.DoubleSide,
   })
 
-  // Pre-build ring geometries (repositioned when location is set)
-  const rings = []
-  for (let r = 0; r < RINGS; r++) {
-    const segments = 64
-    const positions = new Float32Array(segments * 3)
-    const phases = new Float32Array(segments)
-
-    for (let s = 0; s < segments; s++) {
-      const angle = (s / segments) * Math.PI * 2
-      positions[s * 3] = Math.cos(angle)
-      positions[s * 3 + 1] = Math.sin(angle)
-      positions[s * 3 + 2] = 0
-      phases[s] = r
-    }
-
-    const geo = new THREE.BufferGeometry()
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-    geo.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1))
-
-    const ring = new THREE.LineLoop(geo, ringMat)
-    rings.push(ring)
-    group.add(ring)
-  }
+  const disc = new THREE.Mesh(discGeo, mat)
+  group.add(disc)
 
   function setLocation(lat, lon) {
-    const pos = latLonToVec3(lat, lon, globeRadius)
+    const pos = latLonToVec3(lat, lon, globeRadius * 1.004)
     const normal = new THREE.Vector3(pos.x, pos.y, pos.z).normalize()
 
-    for (const ring of rings) {
-      ring.position.set(pos.x, pos.y, pos.z)
-      ring.lookAt(pos.x + normal.x, pos.y + normal.y, pos.z + normal.z)
-    }
+    disc.position.set(pos.x, pos.y, pos.z)
+    disc.lookAt(pos.x + normal.x, pos.y + normal.y, pos.z + normal.z)
 
     group.visible = true
   }
 
-  return { group, material: ringMat, setLocation }
+  return { group, material: mat, setLocation }
 }
