@@ -45,9 +45,33 @@
       border-radius: 0;
       width: 0;
       height: 0;
+      background: none !important;
       border-left: 5px solid transparent;
       border-right: 5px solid transparent;
-      border-bottom: 10px solid #ff6b35;
+      border-bottom: 10px solid currentColor;
+    }
+    #legend .legend-swatch.diamond {
+      border-radius: 0;
+      width: 9px;
+      height: 9px;
+      transform: rotate(45deg);
+    }
+    #legend .legend-swatch.square {
+      border-radius: 0;
+      width: 9px;
+      height: 9px;
+    }
+    #legend .legend-swatch.hexagon {
+      border-radius: 0;
+      width: 11px;
+      height: 10px;
+      clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+    }
+    #legend .legend-swatch.cross {
+      border-radius: 0;
+      width: 10px;
+      height: 10px;
+      clip-path: polygon(35% 0%, 65% 0%, 65% 35%, 100% 35%, 100% 65%, 65% 65%, 65% 100%, 35% 100%, 35% 65%, 0% 65%, 0% 35%, 35% 35%);
     }
     #legend .legend-swatch.line {
       border-radius: 0;
@@ -105,30 +129,54 @@
     <div class="timestamp" id="info-timestamp"></div>
   </div>
   <div id="legend">
-    <div class="legend-title">NASA EONET Natural Events</div>
+    <div class="legend-title">NASA EONET Events</div>
     <div class="legend-item">
-      <div class="legend-swatch" style="background: #f1666e; box-shadow: 0 0 4px #f1666e;"></div>
-      <span class="legend-label">Volcanoes / Severe Storms</span>
+      <div class="legend-swatch triangle" style="color: #ff2d2d;"></div>
+      <span class="legend-label">Volcanoes</span>
     </div>
     <div class="legend-item">
-      <div class="legend-swatch" style="background: #f7a43e; box-shadow: 0 0 4px #f7a43e;"></div>
+      <div class="legend-swatch triangle" style="color: #ff4466;"></div>
+      <span class="legend-label">Temp Extremes</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch hexagon" style="background: #4697f7;"></div>
+      <span class="legend-label">Severe Storms</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch hexagon" style="background: #88ccff;"></div>
+      <span class="legend-label">Sea &amp; Lake Ice</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch diamond" style="background: #ff6b35;"></div>
       <span class="legend-label">Wildfires</span>
     </div>
     <div class="legend-item">
-      <div class="legend-swatch" style="background: #61c16b; box-shadow: 0 0 4px #61c16b;"></div>
-      <span class="legend-label">Floods / Landslides</span>
+      <div class="legend-swatch diamond" style="background: #c9a96e;"></div>
+      <span class="legend-label">Dust &amp; Haze</span>
     </div>
     <div class="legend-item">
-      <div class="legend-swatch" style="background: #4697f7; box-shadow: 0 0 4px #4697f7;"></div>
-      <span class="legend-label">Snow / Ice / Drought</span>
+      <div class="legend-swatch square" style="background: #c4956a;"></div>
+      <span class="legend-label">Landslides</span>
     </div>
     <div class="legend-item">
-      <div class="legend-swatch" style="background: #ff96dc; box-shadow: 0 0 6px #ff96dc;"></div>
-      <span class="legend-label">Event Hotspot</span>
+      <div class="legend-swatch square" style="background: #d4833c;"></div>
+      <span class="legend-label">Drought</span>
     </div>
     <div class="legend-item">
-      <div class="legend-swatch ring" style="border-color: #9b84f7;"></div>
-      <span class="legend-label">Event Pulse</span>
+      <div class="legend-swatch square" style="background: #aa66dd;"></div>
+      <span class="legend-label">Manmade</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background: #00d4aa;"></div>
+      <span class="legend-label">Floods</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background: #44aa88;"></div>
+      <span class="legend-label">Water Color</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch cross" style="background: #d4e5ff;"></div>
+      <span class="legend-label">Snow</span>
     </div>
     <div class="legend-separator"></div>
     <div class="legend-title" style="margin-top: 2px;">USGS Earthquakes</div>
@@ -143,7 +191,7 @@
       <span class="legend-label">Starlink Constellation</span>
     </div>
     <div class="legend-item">
-      <div class="legend-swatch triangle"></div>
+      <div class="legend-swatch triangle" style="color: #ff6b35;"></div>
       <span class="legend-label">ISS Live Position</span>
     </div>
     <div class="legend-item">

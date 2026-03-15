@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import GUI from 'lil-gui'
 
 import { createGlobe } from './globe.js'
-import { createEruptions, createHotspots, createPulseRings } from './particles.js'
+import { createEventMarkers, createHotspots, createPulseRings, EVENT_STYLES } from './particles.js'
 import { createStarfield, createNebula } from './background.js'
 import { trafficPoints } from './data.js'
 import { createCoastlines } from './coastlines.js'
@@ -116,8 +116,8 @@ createCoastlines(GLOBE_RADIUS).then((coastlines) => {
 let hotspots = createHotspots(trafficPoints, GLOBE_RADIUS)
 globeGroup.add(hotspots.points)
 
-let eruptions = createEruptions(trafficPoints, GLOBE_RADIUS)
-globeGroup.add(eruptions.points)
+let eventMarkers = createEventMarkers(trafficPoints, GLOBE_RADIUS)
+globeGroup.add(eventMarkers.points)
 
 let pulseRings = createPulseRings(trafficPoints, GLOBE_RADIUS)
 globeGroup.add(pulseRings.group)
@@ -167,11 +167,11 @@ fetchStarlinkPositions(isMobile ? 500 : Infinity).then(({ satrecs, positions }) 
 function setEmitterData(points) {
   // Remove old
   globeGroup.remove(hotspots.points)
-  globeGroup.remove(eruptions.points)
+  globeGroup.remove(eventMarkers.points)
   hotspots.points.geometry.dispose()
   hotspots.material.dispose()
-  eruptions.points.geometry.dispose()
-  eruptions.material.dispose()
+  eventMarkers.points.geometry.dispose()
+  eventMarkers.material.dispose()
 
   // Remove old pulse rings
   pulseRings.group.traverse((child) => {
@@ -182,20 +182,16 @@ function setEmitterData(points) {
 
   // Create new
   hotspots = createHotspots(points, GLOBE_RADIUS)
-  eruptions = createEruptions(points, GLOBE_RADIUS)
+  eventMarkers = createEventMarkers(points, GLOBE_RADIUS)
   pulseRings = createPulseRings(points, GLOBE_RADIUS)
   globeGroup.add(hotspots.points)
-  globeGroup.add(eruptions.points)
+  globeGroup.add(eventMarkers.points)
   globeGroup.add(pulseRings.group)
 
   // Apply proxy state values to new materials
-  eruptions.material.uniforms.uColor1.value.set(eruptState.color1)
-  eruptions.material.uniforms.uColor2.value.set(eruptState.color2)
-  eruptions.material.uniforms.uColor3.value.set(eruptState.color3)
-  eruptions.material.uniforms.uColor4.value.set(eruptState.color4)
-  eruptions.material.uniforms.uScale.value = eruptState.spread
-  eruptions.material.uniforms.uPointScale.value = eruptState.pointSize
-  eruptions.points.visible = eruptState.visible
+  eventMarkers.material.uniforms.uScale.value = markerState.scale
+  eventMarkers.material.uniforms.uOpacity.value = markerState.opacity
+  eventMarkers.points.visible = markerState.visible
 
   hotspots.material.uniforms.uColor.value.set(hotspotState.color)
   hotspots.points.visible = hotspotState.visible
@@ -208,7 +204,7 @@ function setEmitterData(points) {
 
   // Update timed materials list
   timedMaterials.length = 0
-  timedMaterials.push(starfield.material, eruptions.material, hotspots.material, pulseRings.material, userMarker.material)
+  timedMaterials.push(starfield.material, eventMarkers.material, hotspots.material, pulseRings.material, userMarker.material)
   if (satCloud) timedMaterials.push(satCloud.material)
   if (quakeLayer) timedMaterials.push(quakeLayer.material)
   timedMaterials.push(iss.markerMaterial)
@@ -218,7 +214,7 @@ function setEmitterData(points) {
 // --- Track all shader materials for time uniform ---
 const timedMaterials = [
   starfield.material,
-  eruptions.material,
+  eventMarkers.material,
   hotspots.material,
   pulseRings.material,
 ]
@@ -327,24 +323,16 @@ satFolder.add(satState, 'brightness', 0, 3, 0.05).name('Brightness').onChange((v
 satFolder.add(satState, 'size', 0.1, 5.0, 0.1).name('Size').onChange((v) => { if (satCloud) satCloud.material.uniforms.uSize.value = v })
 satFolder.add(satState, 'visible').name('Visible').onChange((v) => { if (satCloud) satCloud.points.visible = v })
 
-// -- Events (use proxy values — materials get recreated on data swap) --
-const eruptFolder = gui.addFolder('Events')
-const eruptState = {
-  color1: '#' + eruptions.material.uniforms.uColor1.value.getHexString(),
-  color2: '#' + eruptions.material.uniforms.uColor2.value.getHexString(),
-  color3: '#' + eruptions.material.uniforms.uColor3.value.getHexString(),
-  color4: '#' + eruptions.material.uniforms.uColor4.value.getHexString(),
-  spread: eruptions.material.uniforms.uScale.value,
-  pointSize: eruptions.material.uniforms.uPointScale.value,
+// -- Event Markers (use proxy values — materials get recreated on data swap) --
+const markerFolder = gui.addFolder('Event Markers')
+const markerState = {
+  scale: eventMarkers.material.uniforms.uScale.value,
+  opacity: eventMarkers.material.uniforms.uOpacity.value,
   visible: true,
 }
-eruptFolder.addColor(eruptState, 'color1').name('Severe (Red)').onChange((v) => eruptions.material.uniforms.uColor1.value.set(v))
-eruptFolder.addColor(eruptState, 'color2').name('Heavy (Yellow)').onChange((v) => eruptions.material.uniforms.uColor2.value.set(v))
-eruptFolder.addColor(eruptState, 'color3').name('Moderate (Green)').onChange((v) => eruptions.material.uniforms.uColor3.value.set(v))
-eruptFolder.addColor(eruptState, 'color4').name('Light (Blue)').onChange((v) => eruptions.material.uniforms.uColor4.value.set(v))
-eruptFolder.add(eruptState, 'spread', 0.01, 0.5, 0.005).name('Spread').onChange((v) => eruptions.material.uniforms.uScale.value = v)
-eruptFolder.add(eruptState, 'pointSize', 0.001, 0.05, 0.001).name('Point Size').onChange((v) => eruptions.material.uniforms.uPointScale.value = v)
-eruptFolder.add(eruptState, 'visible').name('Visible').onChange((v) => eruptions.points.visible = v)
+markerFolder.add(markerState, 'scale', 0.0, 0.6, 0.01).name('Size').onChange((v) => eventMarkers.material.uniforms.uScale.value = v)
+markerFolder.add(markerState, 'opacity', 0, 1, 0.01).name('Opacity').onChange((v) => eventMarkers.material.uniforms.uOpacity.value = v)
+markerFolder.add(markerState, 'visible').name('Visible').onChange((v) => eventMarkers.points.visible = v)
 
 // -- Hotspots --
 const hotspotFolder = gui.addFolder('Hotspots')
@@ -627,7 +615,7 @@ globeFolder.close()
 gridFolder.close()
 atmosFolder.close()
 satFolder.close()
-eruptFolder.close()
+markerFolder.close()
 hotspotFolder.close()
 ringsFolder.close()
 quakeFolder.close()
@@ -699,6 +687,6 @@ window.addEventListener('resize', () => {
 
   const pr = Math.min(window.devicePixelRatio, 2)
   if (satCloud) satCloud.material.uniforms.uPixelRatio.value = pr
-  eruptions.material.uniforms.uPixelRatio.value = pr
+  eventMarkers.material.uniforms.uPixelRatio.value = pr
   hotspots.material.uniforms.uPixelRatio.value = pr
 })
