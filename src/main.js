@@ -395,8 +395,8 @@ quakeFolder.add(quakeState, 'visible').name('Visible').onChange((v) => { if (qua
 // -- User Location --
 const userFolder = gui.addFolder('My Location')
 guiColor(userFolder, userMarker.material, 'uColor', 'Color')
-userFolder.add(userMarker.material.uniforms.uMaxRadius, 'value', 0.1, 2.0, 0.05).name('Max Radius')
-userFolder.add(userMarker.material.uniforms.uSpeed, 'value', 0.1, 2.0, 0.05).name('Speed')
+userFolder.add(userMarker.material.uniforms.uRadius, 'value', 0.02, 0.3, 0.01).name('Size')
+userFolder.add(userMarker.material.uniforms.uSpeed, 'value', 0.1, 5.0, 0.1).name('Pulse Speed')
 userFolder.add(userMarker.material.uniforms.uOpacity, 'value', 0, 1, 0.01).name('Opacity')
 userFolder.add(userMarker.group, 'visible').name('Visible')
 
