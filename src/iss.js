@@ -112,12 +112,19 @@ export function createISS(globeRadius, { trailLength = 500, backfillMinutes = 45
   const marker = new THREE.Mesh(markerGeo, markerMat)
   group.add(marker)
 
+  // Invisible proxy sphere for raycasting (marker triangle is too small to hit reliably)
+  const hitGeo = new THREE.SphereGeometry(0.08, 8, 8)
+  const hitMat = new THREE.MeshBasicMaterial({ visible: false })
+  const hitProxy = new THREE.Mesh(hitGeo, hitMat)
+  group.add(hitProxy)
+
   // --- State ---
   const orbitAlt = globeRadius * 1.02
   let trailIndex = 0
   let trailFilled = false
   let polling = null
   let prevPos = null
+  let currentData = null // latest API response for tooltip
 
   function updatePosition(lat, lon) {
     const p = latLonToVec3(lat, lon, orbitAlt)
@@ -125,6 +132,7 @@ export function createISS(globeRadius, { trailLength = 500, backfillMinutes = 45
 
     // Position the triangle on the globe surface
     marker.position.copy(posVec)
+    hitProxy.position.copy(posVec)
 
     // Orient: normal = outward from globe center, forward = velocity direction
     const normal = posVec.clone().normalize()
@@ -179,6 +187,7 @@ export function createISS(globeRadius, { trailLength = 500, backfillMinutes = 45
       const res = await fetch(ISS_API)
       if (!res.ok) return
       const data = await res.json()
+      currentData = data
       updatePosition(data.latitude, data.longitude)
       group.visible = true
     } catch (e) {
@@ -282,9 +291,12 @@ export function createISS(globeRadius, { trailLength = 500, backfillMinutes = 45
 
   return {
     group,
+    marker,
+    hitProxy,
     markerMaterial: markerMat,
     trailMaterial: trailMat,
     startPolling,
     stopPolling,
+    getData: () => currentData,
   }
 }

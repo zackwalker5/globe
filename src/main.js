@@ -8,7 +8,7 @@ import GUI from 'lil-gui'
 import { createGlobe } from './globe.js'
 import { createEventMarkers, createHotspots, createPulseRings, EVENT_STYLES } from './particles.js'
 import { createStarfield, createNebula } from './background.js'
-import { trafficPoints } from './data.js'
+import { trafficPoints, latLonToVec3 } from './data.js'
 import { createCoastlines } from './coastlines.js'
 import { fetchStormData, getFallbackStorms } from './weather.js'
 import { fetchEONETEvents } from './eonet.js'
@@ -17,6 +17,7 @@ import { createISS } from './iss.js'
 import { fetchEarthquakes, QUAKE_RANGES } from './earthquakes.js'
 import { createQuakeLayer } from './quakevis.js'
 import { fetchStarlinkPositions, updatePositions, createSatelliteCloud } from './satellites.js'
+import { createRadarOverlay, createInfraredOverlay } from './radar.js'
 
 // --- Setup ---
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768
@@ -111,6 +112,17 @@ createCoastlines(GLOBE_RADIUS).then((coastlines) => {
 
   coastFolder.close()
 })
+
+// --- Weather overlays ---
+const radar = createRadarOverlay(GLOBE_RADIUS)
+globeGroup.add(radar.mesh)
+radar.mesh.visible = true
+radar.init()
+
+const infrared = createInfraredOverlay(GLOBE_RADIUS)
+globeGroup.add(infrared.mesh)
+infrared.mesh.visible = false
+infrared.init()
 
 // --- Emitter system (swappable data source) ---
 let hotspots = createHotspots(trafficPoints, GLOBE_RADIUS)
@@ -367,7 +379,7 @@ const quakeState = {
   speed: 0.5,
   opacity: 0.5,
   visible: true,
-  range: 'Past 7 Days',
+  range: 'Past 24 Hours',
 }
 quakeFolder.add(quakeState, 'range', Object.keys(QUAKE_RANGES)).name('Time Range').onChange(async (v) => {
   sourceCache.earthquakes = await fetchEarthquakes(QUAKE_RANGES[v])
@@ -379,6 +391,28 @@ quakeFolder.add(quakeState, 'maxRadius', 0.05, 0.5, 0.01).name('Ring Size').onCh
 quakeFolder.add(quakeState, 'speed', 0.1, 3.0, 0.1).name('Pulse Speed').onChange((v) => { if (quakeLayer) quakeLayer.material.uniforms.uSpeed.value = v })
 quakeFolder.add(quakeState, 'opacity', 0, 1, 0.01).name('Opacity').onChange((v) => { if (quakeLayer) quakeLayer.material.uniforms.uOpacity.value = v })
 quakeFolder.add(quakeState, 'visible').name('Visible').onChange((v) => { if (quakeLayer) quakeLayer.group.visible = v })
+
+// -- Weather Radar --
+const radarFolder = gui.addFolder('Weather Radar')
+const radarState = { visible: true, opacity: 0.7 }
+radarFolder.add(radarState, 'visible').name('Visible').onChange((v) => {
+  radar.mesh.visible = v
+  if (v) radar.startAnimation(); else radar.stopAnimation()
+})
+radarFolder.add(radarState, 'opacity', 0, 1, 0.01).name('Opacity').onChange((v) => {
+  radar.material.opacity = v
+})
+
+// -- Infrared Satellite --
+const irFolder = gui.addFolder('Infrared Satellite')
+const irState = { visible: false, opacity: 0.5 }
+irFolder.add(irState, 'visible').name('Visible').onChange((v) => {
+  infrared.mesh.visible = v
+  if (v) infrared.startAnimation(); else infrared.stopAnimation()
+})
+irFolder.add(irState, 'opacity', 0, 1, 0.01).name('Opacity').onChange((v) => {
+  infrared.material.opacity = v
+})
 
 // -- User Location --
 const userFolder = gui.addFolder('My Location')
@@ -520,6 +554,8 @@ dataFolder.add(sourceToggles, 'eonet').name('NASA EONET').onChange(async (v) => 
 
 // --- Quake layer (dedicated visualization) ---
 let quakeLayer = null
+let quakeProxyPoints = null
+let quakeData = []
 
 function rebuildQuakeLayer() {
   // Remove old layer
@@ -534,6 +570,15 @@ function rebuildQuakeLayer() {
     quakeLayer = null
   }
 
+  // Remove old proxy
+  if (quakeProxyPoints) {
+    quakeProxyPoints.geometry.dispose()
+    quakeProxyPoints.material.dispose()
+    globeGroup.remove(quakeProxyPoints)
+    quakeProxyPoints = null
+  }
+  quakeData = []
+
   if (sourceToggles.earthquakes && sourceCache.earthquakes.length > 0) {
     quakeLayer = createQuakeLayer(sourceCache.earthquakes, GLOBE_RADIUS)
     globeGroup.add(quakeLayer.group)
@@ -545,6 +590,22 @@ function rebuildQuakeLayer() {
     quakeLayer.material.uniforms.uSpeed.value = quakeState.speed
     quakeLayer.material.uniforms.uOpacity.value = quakeState.opacity
     quakeLayer.group.visible = quakeState.visible
+
+    // Build invisible proxy points for raycasting
+    quakeData = sourceCache.earthquakes
+    const count = quakeData.length
+    const proxyPositions = new Float32Array(count * 3)
+    for (let i = 0; i < count; i++) {
+      const pt = quakeData[i]
+      const pos = latLonToVec3(pt.lat, pt.lon, GLOBE_RADIUS * 1.004)
+      proxyPositions[i * 3] = pos.x
+      proxyPositions[i * 3 + 1] = pos.y
+      proxyPositions[i * 3 + 2] = pos.z
+    }
+    const proxyGeo = new THREE.BufferGeometry()
+    proxyGeo.setAttribute('position', new THREE.BufferAttribute(proxyPositions, 3))
+    quakeProxyPoints = new THREE.Points(proxyGeo, new THREE.PointsMaterial({ size: 0, visible: false }))
+    globeGroup.add(quakeProxyPoints)
   }
 }
 
@@ -619,6 +680,8 @@ markerFolder.close()
 hotspotFolder.close()
 ringsFolder.close()
 quakeFolder.close()
+radarFolder.close()
+irFolder.close()
 userFolder.close()
 issFolder.close()
 starsFolder.close()
@@ -645,6 +708,139 @@ function getSunDirection() {
     -Math.cos(sunLat) * Math.sin(sunLon)
   ).normalize()
 }
+
+// --- Event hover tooltip ---
+const tooltip = document.getElementById('event-tooltip')
+const ttName = tooltip.querySelector('.tt-name')
+const ttCategory = tooltip.querySelector('.tt-category')
+const ttDetail = tooltip.querySelector('.tt-detail')
+const raycaster = new THREE.Raycaster()
+const mouse = new THREE.Vector2()
+
+const CATEGORY_LABELS = {
+  wildfires: 'Wildfire', volcanoes: 'Volcano', severeStorms: 'Severe Storm',
+  floods: 'Flood', earthquakes: 'Earthquake', landslides: 'Landslide',
+  snow: 'Snow', dustHaze: 'Dust & Haze', drought: 'Drought',
+  tempExtremes: 'Temp Extreme', seaLakeIce: 'Sea & Lake Ice',
+  waterColor: 'Water Color', manmade: 'Manmade', unknown: 'Event',
+}
+
+function formatEventDetails(pt) {
+  const lines = []
+  if (pt.magnitude != null) {
+    lines.push(`Magnitude: ${pt.magnitude} ${pt.magnitudeUnit || ''}`)
+  }
+  if (pt.depth != null) {
+    lines.push(`Depth: ${pt.depth.toFixed(1)} km`)
+  }
+  if (pt.windSpeed) {
+    lines.push(`Wind: ${pt.windSpeed} m/s`)
+  }
+  if (pt.precipitationIntensity) {
+    lines.push(`Precip: ${pt.precipitationIntensity} mm/hr`)
+  }
+  lines.push(`${pt.lat.toFixed(2)}°, ${pt.lon.toFixed(2)}°`)
+  return lines.join('\n')
+}
+
+function onMouseMove(e) {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1
+
+  // Scale hit threshold with camera distance — tighter when zoomed in
+  const camDist = camera.position.length()
+  raycaster.params.Points.threshold = 0.02 + (camDist - controls.minDistance) / (controls.maxDistance - controls.minDistance) * 0.2
+
+  raycaster.setFromCamera(mouse, camera)
+
+  let hit = null
+  let hitPos = null
+
+  // Check event markers
+  if (eventMarkers.points.visible && eventMarkers.eventData.length > 0) {
+    const intersects = raycaster.intersectObject(eventMarkers.points)
+    if (intersects.length > 0) {
+      const idx = intersects[0].index
+      if (idx < eventMarkers.eventData.length) {
+        hit = eventMarkers.eventData[idx]
+        hitPos = intersects[0].point
+      }
+    }
+  }
+
+  // Check quake proxy points
+  if (!hit && quakeProxyPoints && quakeState.visible && quakeData.length > 0) {
+    const intersects = raycaster.intersectObject(quakeProxyPoints)
+    if (intersects.length > 0) {
+      const idx = intersects[0].index
+      if (idx < quakeData.length) {
+        hit = quakeData[idx]
+        hitPos = intersects[0].point
+      }
+    }
+  }
+
+  // Check ISS marker
+  let isISS = false
+  if (!hit && iss.group.visible) {
+    const intersects = raycaster.intersectObject(iss.hitProxy)
+    if (intersects.length > 0) {
+      hitPos = intersects[0].point
+      isISS = true
+    }
+  }
+
+  if ((hit || isISS) && hitPos) {
+    // Project 3D point to screen
+    const projected = hitPos.clone().project(camera)
+    const x = (projected.x * 0.5 + 0.5) * window.innerWidth
+    const y = (-projected.y * 0.5 + 0.5) * window.innerHeight
+
+    if (isISS) {
+      const issData = iss.getData()
+      ttName.textContent = 'International Space Station'
+      ttCategory.textContent = 'SATELLITE'
+      ttCategory.style.color = '#ff6b35'
+      if (issData) {
+        const lines = []
+        if (issData.latitude != null) lines.push(`Lat: ${Number(issData.latitude).toFixed(2)}°`)
+        if (issData.longitude != null) lines.push(`Lon: ${Number(issData.longitude).toFixed(2)}°`)
+        if (issData.altitude != null) lines.push(`Altitude: ${Number(issData.altitude).toFixed(1)} km`)
+        if (issData.velocity != null) lines.push(`Velocity: ${Number(issData.velocity).toFixed(0)} km/h`)
+        if (issData.visibility != null) lines.push(`Visibility: ${issData.visibility}`)
+        ttDetail.textContent = lines.join('\n')
+      } else {
+        ttDetail.textContent = 'Acquiring data...'
+      }
+    } else {
+      ttName.textContent = hit.name || 'Unknown Event'
+      const cat = hit.category || 'unknown'
+      const style = EVENT_STYLES[cat]
+      const categoryColor = style ? '#' + style.color.getHexString() : '#999'
+      ttCategory.textContent = CATEGORY_LABELS[cat] || cat
+      ttCategory.style.color = categoryColor
+      ttDetail.textContent = formatEventDetails(hit)
+    }
+
+    // Position tooltip offset from point
+    const ttW = tooltip.offsetWidth
+    const ttH = tooltip.offsetHeight
+    let tx = x + 12
+    let ty = y - ttH - 8
+    // Keep on screen
+    if (tx + ttW > window.innerWidth - 8) tx = x - ttW - 12
+    if (ty < 8) ty = y + 12
+    tooltip.style.left = tx + 'px'
+    tooltip.style.top = ty + 'px'
+    tooltip.classList.add('visible')
+    renderer.domElement.style.cursor = 'pointer'
+  } else {
+    tooltip.classList.remove('visible')
+    renderer.domElement.style.cursor = ''
+  }
+}
+
+window.addEventListener('mousemove', onMouseMove)
 
 // --- Animation ---
 const clock = new THREE.Clock()

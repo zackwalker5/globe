@@ -257,7 +257,7 @@ export function createEventMarkers(eventPoints, globeRadius) {
   })
 
   const points = new THREE.Points(geo, mat)
-  return { points, material: mat }
+  return { points, material: mat, eventData: eventPoints }
 }
 
 

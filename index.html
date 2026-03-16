@@ -120,9 +120,49 @@
       letter-spacing: 2px;
       color: rgba(255, 255, 255, 0.3);
     }
+    #event-tooltip {
+      position: fixed;
+      z-index: 20;
+      pointer-events: none;
+      font-family: 'Courier New', monospace;
+      background: rgba(5, 0, 16, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+      padding: 8px 10px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      max-width: 240px;
+    }
+    #event-tooltip.visible { opacity: 1; }
+    #event-tooltip .tt-name {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      color: rgba(255, 255, 255, 0.85);
+      margin-bottom: 4px;
+      line-height: 1.3;
+    }
+    #event-tooltip .tt-category {
+      font-size: 8px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    #event-tooltip .tt-detail {
+      font-size: 9px;
+      color: rgba(255, 255, 255, 0.45);
+      line-height: 1.4;
+    }
   </style>
 </head>
 <body>
+  <div id="event-tooltip">
+    <div class="tt-name"></div>
+    <div class="tt-category"></div>
+    <div class="tt-detail"></div>
+  </div>
   <div id="data-info">
     <div class="source" id="info-source">Internet Traffic</div>
     <div class="count" id="info-count">20 points</div>

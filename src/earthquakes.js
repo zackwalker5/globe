@@ -7,7 +7,7 @@ export const QUAKE_RANGES = {
   'Past 30 Days': 'month',
 }
 
-export async function fetchEarthquakes(range = 'week') {
+export async function fetchEarthquakes(range = 'day') {
   console.log(`Fetching USGS earthquake data (${range})...`)
 
   try {
