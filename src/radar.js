@@ -2,18 +2,23 @@ import * as THREE from 'three'
 
 const MANIFEST_URL = 'https://api.rainviewer.com/public/weather-maps.json'
 const TILE_SIZE = 256
-const ZOOM = 3
-const GRID = 8 // 2^ZOOM
-const MERC_SIZE = TILE_SIZE * GRID // 2048 — Mercator tile grid
-const EQ_WIDTH = 2048 // equirectangular output
-const EQ_HEIGHT = 1024
 const FRAME_INTERVAL = 500
 const MANIFEST_REFRESH = 10 * 60 * 1000
 
-// Mercator max latitude in radians (~85.05°)
+// Zoom tiers: camera distance → tile zoom level + output resolution
+const ZOOM_TIERS = [
+  { maxDist: 5,  zoom: 5, eqW: 4096, eqH: 2048 },  // very close
+  { maxDist: 8,  zoom: 4, eqW: 4096, eqH: 2048 },   // close
+  { maxDist: 14, zoom: 3, eqW: 2048, eqH: 1024 },   // mid
+  { maxDist: Infinity, zoom: 2, eqW: 1024, eqH: 512 }, // far
+]
+// Limit frames at high zoom to keep tile count sane
+// zoom 4: 256 tiles/frame, zoom 5: 1024 tiles/frame
+const MAX_FRAMES_BY_ZOOM = { 5: 2, 4: 3 }
+
 const MERC_MAX_LAT = Math.atan(Math.sinh(Math.PI))
 
-// Shared manifest — fetched once, used by both layers
+// Shared manifest
 let manifestCache = null
 let manifestHost = ''
 let manifestPromise = null
@@ -38,60 +43,52 @@ async function fetchSharedManifest() {
   return manifestPromise
 }
 
-// Pre-compute equirectangular row → Mercator source row lookup table
-function buildRowLUT(eqHeight, mercHeight) {
-  const lut = new Float32Array(eqHeight)
-  for (let y = 0; y < eqHeight; y++) {
-    // Map output row to latitude: top = +90°, bottom = -90°
-    const lat = (0.5 - y / eqHeight) * Math.PI // radians, +π/2 to -π/2
-
-    // Clamp to Mercator range
+// Build row LUT for a given eq height and merc height
+const rowLUTCache = {}
+function getRowLUT(eqH, mercH) {
+  const key = `${eqH}_${mercH}`
+  if (rowLUTCache[key]) return rowLUTCache[key]
+  const lut = new Float32Array(eqH)
+  for (let y = 0; y < eqH; y++) {
+    const lat = (0.5 - y / eqH) * Math.PI
     if (Math.abs(lat) >= MERC_MAX_LAT) {
-      lut[y] = -1 // outside Mercator coverage
+      lut[y] = -1
       continue
     }
-
-    // Latitude to Mercator normalized y (0 at top/north, 1 at bottom/south)
     const mercY = (1 - Math.log(Math.tan(lat) + 1 / Math.cos(lat)) / Math.PI) / 2
-    lut[y] = mercY * mercHeight
+    lut[y] = mercY * mercH
   }
+  rowLUTCache[key] = lut
   return lut
 }
 
-const rowLUT = buildRowLUT(EQ_HEIGHT, MERC_SIZE)
-
-// Re-project a Mercator canvas to equirectangular
-function reprojectToEquirect(mercCanvas) {
+function reprojectToEquirect(mercCanvas, mercSize, eqW, eqH) {
   const eq = document.createElement('canvas')
-  eq.width = EQ_WIDTH
-  eq.height = EQ_HEIGHT
+  eq.width = eqW
+  eq.height = eqH
   const eqCtx = eq.getContext('2d')
-  const mercCtx = mercCanvas.getContext('2d')
+  const lut = getRowLUT(eqH, mercSize)
 
-  // x maps linearly (both are 0-360° longitude), just scale
-  const xScale = MERC_SIZE / EQ_WIDTH
-
-  for (let y = 0; y < EQ_HEIGHT; y++) {
-    const srcY = rowLUT[y]
-    if (srcY < 0 || srcY >= MERC_SIZE - 1) continue
-
-    const srcYFloor = Math.floor(srcY)
-    // Draw a 1px-high strip from the Mercator source row
+  for (let y = 0; y < eqH; y++) {
+    const srcY = lut[y]
+    if (srcY < 0 || srcY >= mercSize - 1) continue
     eqCtx.drawImage(
       mercCanvas,
-      0, srcYFloor, MERC_SIZE, 1, // source: full width, 1px row
-      0, y, EQ_WIDTH, 1           // dest: full width, 1px row
+      0, Math.floor(srcY), mercSize, 1,
+      0, y, eqW, 1
     )
   }
-
   return eq
 }
 
-// Generic weather overlay — works for radar or infrared satellite
 function createWeatherOverlay(globeRadius, { radiusScale = 1.008, tileUrlSuffix = '/2/1_1.png' } = {}) {
+  // Start with mid-tier canvas size
+  let eqW = 2048
+  let eqH = 1024
+
   const displayCanvas = document.createElement('canvas')
-  displayCanvas.width = EQ_WIDTH
-  displayCanvas.height = EQ_HEIGHT
+  displayCanvas.width = eqW
+  displayCanvas.height = eqH
   const displayCtx = displayCanvas.getContext('2d')
 
   const texture = new THREE.CanvasTexture(displayCanvas)
@@ -109,12 +106,23 @@ function createWeatherOverlay(globeRadius, { radiusScale = 1.008, tileUrlSuffix 
   })
   const mesh = new THREE.Mesh(geo, mat)
 
-  let frames = []
+  let allFrames = []
   let frameCanvases = []
   let frameIndex = 0
   let animInterval = null
   let loading = false
   let ready = false
+  let currentZoom = 3
+  let rebuilding = false
+
+  function resizeCanvas(newW, newH) {
+    if (displayCanvas.width === newW && displayCanvas.height === newH) return
+    displayCanvas.width = newW
+    displayCanvas.height = newH
+    eqW = newW
+    eqH = newH
+    texture.needsUpdate = true
+  }
 
   function loadTileImage(url) {
     return new Promise((resolve) => {
@@ -126,18 +134,19 @@ function createWeatherOverlay(globeRadius, { radiusScale = 1.008, tileUrlSuffix 
     })
   }
 
-  async function prerenderFrame(frame) {
-    // 1. Draw tiles to Mercator canvas
+  async function prerenderFrame(frame, zoom, outW, outH) {
+    const grid = Math.pow(2, zoom)
+    const mercSize = TILE_SIZE * grid
     const mercCanvas = document.createElement('canvas')
-    mercCanvas.width = MERC_SIZE
-    mercCanvas.height = MERC_SIZE
+    mercCanvas.width = mercSize
+    mercCanvas.height = mercSize
     const mercCtx = mercCanvas.getContext('2d')
     let loaded = 0
 
     const promises = []
-    for (let y = 0; y < GRID; y++) {
-      for (let x = 0; x < GRID; x++) {
-        const url = `${manifestHost}${frame.path}/${TILE_SIZE}/${ZOOM}/${x}/${y}${tileUrlSuffix}`
+    for (let y = 0; y < grid; y++) {
+      for (let x = 0; x < grid; x++) {
+        const url = `${manifestHost}${frame.path}/${TILE_SIZE}/${zoom}/${x}/${y}${tileUrlSuffix}`
         promises.push(
           loadTileImage(url).then((img) => {
             if (img) {
@@ -149,36 +158,42 @@ function createWeatherOverlay(globeRadius, { radiusScale = 1.008, tileUrlSuffix 
       }
     }
     await Promise.all(promises)
-
     if (loaded === 0) return { canvas: null, tileCount: 0 }
-
-    // 2. Re-project from Mercator to equirectangular
-    const eqCanvas = reprojectToEquirect(mercCanvas)
+    const eqCanvas = reprojectToEquirect(mercCanvas, mercSize, outW, outH)
     return { canvas: eqCanvas, tileCount: loaded }
   }
 
   function showFrame(index) {
     if (!frameCanvases[index]) return
-    displayCtx.clearRect(0, 0, EQ_WIDTH, EQ_HEIGHT)
+    displayCtx.clearRect(0, 0, eqW, eqH)
     displayCtx.drawImage(frameCanvases[index], 0, 0)
     texture.needsUpdate = true
   }
 
-  async function prefetchAllFrames() {
-    const BATCH = 4
+  async function buildCache(zoom, frames) {
+    const tier = ZOOM_TIERS.find((t) => t.zoom === zoom) || ZOOM_TIERS[2]
+    const maxFrames = MAX_FRAMES_BY_ZOOM[zoom]
+    const useFrames = maxFrames ? frames.slice(-maxFrames) : frames
+    const BATCH = zoom >= 5 ? 1 : zoom >= 4 ? 2 : 4
     const results = []
-    for (let i = 0; i < frames.length; i += BATCH) {
-      const batch = frames.slice(i, i + BATCH)
-      const batchResults = await Promise.all(batch.map((f) => prerenderFrame(f)))
+    for (let i = 0; i < useFrames.length; i += BATCH) {
+      const batch = useFrames.slice(i, i + BATCH)
+      const batchResults = await Promise.all(
+        batch.map((f) => prerenderFrame(f, zoom, tier.eqW, tier.eqH))
+      )
       results.push(...batchResults)
     }
-    frameCanvases = results.filter((r) => r.tileCount > 0).map((r) => r.canvas)
+    return {
+      canvases: results.filter((r) => r.tileCount > 0).map((r) => r.canvas),
+      eqW: tier.eqW,
+      eqH: tier.eqH,
+    }
   }
 
   function startAnimation() {
     if (animInterval) return
     animInterval = setInterval(() => {
-      if (!ready || frameCanvases.length === 0) return
+      if (frameCanvases.length === 0) return
       frameIndex = (frameIndex + 1) % frameCanvases.length
       showFrame(frameIndex)
     }, FRAME_INTERVAL)
@@ -193,22 +208,59 @@ function createWeatherOverlay(globeRadius, { radiusScale = 1.008, tileUrlSuffix 
 
   async function loadFrames(newFrames) {
     if (newFrames.length === 0) return
-    frames = newFrames
+    allFrames = newFrames
     loading = true
-    ready = false
 
-    // Show the most recent frame immediately
-    const lastResult = await prerenderFrame(frames[frames.length - 1])
-    if (lastResult.tileCount > 0) {
-      displayCtx.clearRect(0, 0, EQ_WIDTH, EQ_HEIGHT)
-      displayCtx.drawImage(lastResult.canvas, 0, 0)
-      texture.needsUpdate = true
+    const tier = ZOOM_TIERS.find((t) => t.zoom === currentZoom) || ZOOM_TIERS[2]
+
+    // If no frames cached yet, show most recent immediately
+    if (frameCanvases.length === 0) {
+      resizeCanvas(tier.eqW, tier.eqH)
+      const lastResult = await prerenderFrame(allFrames[allFrames.length - 1], currentZoom, tier.eqW, tier.eqH)
+      if (lastResult.tileCount > 0) {
+        displayCtx.clearRect(0, 0, eqW, eqH)
+        displayCtx.drawImage(lastResult.canvas, 0, 0)
+        texture.needsUpdate = true
+      }
     }
 
-    await prefetchAllFrames()
-    frameIndex = frameCanvases.length - 1
+    const result = await buildCache(currentZoom, allFrames)
+    if (result.canvases.length > 0) {
+      resizeCanvas(result.eqW, result.eqH)
+      frameCanvases = result.canvases
+      frameIndex = frameCanvases.length - 1
+    }
     ready = true
     loading = false
+  }
+
+  async function setZoomForDistance(camDist) {
+    let targetZoom = ZOOM_TIERS[ZOOM_TIERS.length - 1].zoom
+    for (const tier of ZOOM_TIERS) {
+      if (camDist <= tier.maxDist) {
+        targetZoom = tier.zoom
+        break
+      }
+    }
+
+    if (targetZoom === currentZoom || rebuilding || allFrames.length === 0) return
+    currentZoom = targetZoom
+    rebuilding = true
+    console.log(`Weather: switching to zoom ${currentZoom}`)
+
+    try {
+      // Build new cache in background — old frames keep animating
+      const result = await buildCache(currentZoom, allFrames)
+      if (result.canvases.length > 0) {
+        resizeCanvas(result.eqW, result.eqH)
+        frameCanvases = result.canvases
+        frameIndex = frameCanvases.length - 1
+        showFrame(frameIndex)
+      }
+    } catch (e) {
+      console.warn('Weather zoom switch error:', e)
+    }
+    rebuilding = false
   }
 
   return {
@@ -217,6 +269,7 @@ function createWeatherOverlay(globeRadius, { radiusScale = 1.008, tileUrlSuffix 
     loadFrames,
     startAnimation,
     stopAnimation,
+    setZoomForDistance,
     isLoading: () => loading,
   }
 }

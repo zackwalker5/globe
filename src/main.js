@@ -10,6 +10,7 @@ import { createEventMarkers, createHotspots, createPulseRings, EVENT_STYLES } fr
 import { createStarfield, createNebula } from './background.js'
 import { trafficPoints, latLonToVec3 } from './data.js'
 import { createCoastlines } from './coastlines.js'
+import { createCountryBorders } from './countries.js'
 import { fetchStormData, getFallbackStorms } from './weather.js'
 import { fetchEONETEvents } from './eonet.js'
 import { createUserMarker } from './userlocation.js'
@@ -18,6 +19,7 @@ import { fetchEarthquakes, QUAKE_RANGES } from './earthquakes.js'
 import { createQuakeLayer } from './quakevis.js'
 import { fetchStarlinkPositions, updatePositions, createSatelliteCloud } from './satellites.js'
 import { createRadarOverlay, createInfraredOverlay } from './radar.js'
+import { createAuroraOverlay } from './aurora.js'
 
 // --- Setup ---
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768
@@ -113,6 +115,11 @@ createCoastlines(GLOBE_RADIUS).then((coastlines) => {
   coastFolder.close()
 })
 
+// Country borders
+const countryBorders = createCountryBorders(GLOBE_RADIUS)
+countryBorders.group.visible = false
+globeGroup.add(countryBorders.group)
+
 // --- Weather overlays ---
 const radar = createRadarOverlay(GLOBE_RADIUS)
 globeGroup.add(radar.mesh)
@@ -123,6 +130,11 @@ const infrared = createInfraredOverlay(GLOBE_RADIUS)
 globeGroup.add(infrared.mesh)
 infrared.mesh.visible = false
 infrared.init()
+
+const aurora = createAuroraOverlay(GLOBE_RADIUS)
+globeGroup.add(aurora.mesh)
+aurora.mesh.visible = true
+aurora.init()
 
 // --- Emitter system (swappable data source) ---
 let hotspots = createHotspots(trafficPoints, GLOBE_RADIUS)
@@ -170,6 +182,7 @@ fetchStarlinkPositions(isMobile ? 500 : Infinity).then(({ satrecs, positions }) 
   if (positions.length === 0) return
   satSatrecs = satrecs
   satCloud = createSatelliteCloud(GLOBE_RADIUS, positions)
+  satCloud.points.visible = false
   scene.add(satCloud.points)
   timedMaterials.push(satCloud.material)
   console.log(`Starlink cloud: ${positions.length} satellites`)
@@ -216,7 +229,7 @@ function setEmitterData(points) {
 
   // Update timed materials list
   timedMaterials.length = 0
-  timedMaterials.push(starfield.material, eventMarkers.material, hotspots.material, pulseRings.material, userMarker.material)
+  timedMaterials.push(starfield.material, eventMarkers.material, hotspots.material, pulseRings.material, userMarker.material, aurora.material)
   if (satCloud) timedMaterials.push(satCloud.material)
   if (quakeLayer) timedMaterials.push(quakeLayer.material)
   timedMaterials.push(iss.markerMaterial)
@@ -229,6 +242,7 @@ const timedMaterials = [
   eventMarkers.material,
   hotspots.material,
   pulseRings.material,
+  aurora.material,
 ]
 
 // Nebula cloud materials
@@ -287,6 +301,59 @@ if (bloomPass) {
   bloomFolder.add(renderer, 'toneMappingExposure', 0.1, 5, 0.05).name('Exposure')
 }
 
+// -- Globe Mode --
+const modeFolder = gui.addFolder('Globe Mode')
+const globeMode = { mode: 'Vector' }
+// Apply vector mode defaults on startup
+globe.material.uniforms.uTextureStrength.value = 0
+globe.material.uniforms.uBumpStrength.value = 0
+globe.material.uniforms.uNightStrength.value = 0
+globe.material.uniforms.uOceanStrength.value = 0
+countryBorders.group.visible = true
+
+modeFolder.add(globeMode, 'mode', ['Textured', 'Vector']).name('Style').onChange((v) => {
+  if (v === 'Vector') {
+    globe.material.uniforms.uTextureStrength.value = 0
+    globe.material.uniforms.uBumpStrength.value = 0
+    globe.material.uniforms.uNightStrength.value = 0
+    globe.material.uniforms.uOceanStrength.value = 0
+    countryBorders.group.visible = true
+  } else {
+    globe.material.uniforms.uTextureStrength.value = 1.0
+    globe.material.uniforms.uBumpStrength.value = 0.03
+    globe.material.uniforms.uNightStrength.value = 0.15
+    globe.material.uniforms.uOceanStrength.value = 0.3
+    countryBorders.group.visible = false
+  }
+})
+
+// Country border controls (within mode folder)
+const borderOpacity = { value: 0.3 }
+modeFolder.add(borderOpacity, 'value', 0, 1, 0.01).name('Border Opacity').onChange((v) => {
+  countryBorders.borderMaterial.opacity = v
+})
+const coastOpacity = { value: 0.5 }
+modeFolder.add(coastOpacity, 'value', 0, 1, 0.01).name('Coast Opacity').onChange((v) => {
+  countryBorders.coastMaterial.opacity = v
+})
+const borderColor = { value: '#6149f7' }
+modeFolder.addColor(borderColor, 'value').name('Border Color').onChange((v) => {
+  countryBorders.borderMaterial.color.set(v)
+})
+const coastColor = { value: '#8c64ff' }
+modeFolder.addColor(coastColor, 'value').name('Coast Color').onChange((v) => {
+  countryBorders.coastMaterial.color.set(v)
+})
+const fillOpacity = { value: 0.3 }
+modeFolder.add(fillOpacity, 'value', 0, 1, 0.01).name('Land Fill Opacity').onChange((v) => {
+  countryBorders.fillMaterial.opacity = v
+})
+const fillColor = { value: '#1a0a30' }
+modeFolder.addColor(fillColor, 'value').name('Land Fill Color').onChange((v) => {
+  countryBorders.fillMaterial.color.set(v)
+})
+modeFolder.close()
+
 // -- Globe Surface --
 const globeFolder = gui.addFolder('Globe')
 guiColor(globeFolder, globe.material, 'uColor', 'Base Color')
@@ -327,7 +394,7 @@ const satState = {
   color2: '#ffffff',
   brightness: 1.0,
   size: 0.2,
-  visible: true,
+  visible: false,
 }
 satFolder.addColor(satState, 'color1').name('Color 1').onChange((v) => { if (satCloud) satCloud.material.uniforms.uColor1.value.set(v) })
 satFolder.addColor(satState, 'color2').name('Color 2').onChange((v) => { if (satCloud) satCloud.material.uniforms.uColor2.value.set(v) })
@@ -412,6 +479,16 @@ irFolder.add(irState, 'visible').name('Visible').onChange((v) => {
 })
 irFolder.add(irState, 'opacity', 0, 1, 0.01).name('Opacity').onChange((v) => {
   infrared.material.opacity = v
+})
+
+// -- Aurora (Northern/Southern Lights) --
+const auroraFolder = gui.addFolder('Aurora')
+const auroraState = { visible: true, opacity: 0.8 }
+auroraFolder.add(auroraState, 'visible').name('Visible').onChange((v) => {
+  aurora.mesh.visible = v
+})
+auroraFolder.add(auroraState, 'opacity', 0, 1, 0.01).name('Opacity').onChange((v) => {
+  aurora.material.uniforms.uOpacity.value = v
 })
 
 // -- User Location --
@@ -682,6 +759,7 @@ ringsFolder.close()
 quakeFolder.close()
 radarFolder.close()
 irFolder.close()
+auroraFolder.close()
 userFolder.close()
 issFolder.close()
 starsFolder.close()
@@ -841,6 +919,21 @@ function onMouseMove(e) {
 }
 
 window.addEventListener('mousemove', onMouseMove)
+
+// --- Adaptive radar zoom ---
+let lastRadarZoomCheck = 0
+let radarZoomDebounce = null
+
+function checkRadarZoom() {
+  const camDist = camera.position.length()
+  if (radarZoomDebounce) clearTimeout(radarZoomDebounce)
+  radarZoomDebounce = setTimeout(() => {
+    if (radar.mesh.visible) radar.setZoomForDistance(camDist)
+    if (infrared.mesh.visible) infrared.setZoomForDistance(camDist)
+  }, 300)
+}
+
+controls.addEventListener('change', checkRadarZoom)
 
 // --- Animation ---
 const clock = new THREE.Clock()
